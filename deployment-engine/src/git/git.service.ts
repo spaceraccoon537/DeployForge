@@ -1,7 +1,4 @@
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { execFile } from "node:child_process";
 
 export async function cloneRepository(
   repositoryUrl: string,
@@ -11,9 +8,36 @@ export async function cloneRepository(
   console.log(`Cloning repository: ${repositoryUrl}`);
   console.log(`Branch: ${branch}`);
 
-  const command = `git clone --branch ${branch} --single-branch ${repositoryUrl} "${destination}"`;
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "git",
+      ["clone", "--branch", branch, "--single-branch", repositoryUrl, destination],
+      { windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
+      (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      }
+    );
+  });
 
-  await execAsync(command);
+  const commitHash = await new Promise<string>((resolve, reject) => {
+    execFile(
+      "git",
+      ["-C", destination, "rev-parse", "HEAD"],
+      { windowsHide: true },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout.trim());
+      }
+    );
+  });
 
+  console.log(`COMMIT:${commitHash}`);
   console.log("Repository cloned successfully.");
 }
