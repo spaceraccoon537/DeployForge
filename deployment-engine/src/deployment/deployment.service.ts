@@ -1,7 +1,8 @@
 import { cloneRepository } from "../git/git.service.js";
 import {
   buildDockerImage,
-  runDockerContainer
+  runDockerContainer,
+  removeContainer
 } from "../docker/docker.service.js";
 import { checkHealth } from "../health/health.service.js";
 import fs from "fs/promises";
@@ -13,6 +14,7 @@ export interface DeploymentConfig {
   branch?: string;
   projectName: string;
   port: number;
+  deploymentNumber: number;
 }
 
 export async function deploy(
@@ -23,10 +25,16 @@ export async function deploy(
     `deployforge-${config.projectName}-${Date.now()}`
   );
 
-  const imageName = `deployforge-${config.projectName}`;
-  const containerName = `deployforge-${config.projectName}`;
+  const projectSlug = config.projectName
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "") || "deployforge-app";
+  const imageName = `deployforge-${projectSlug}:deploy-${config.deploymentNumber}`;
+  const containerName = `deployforge-${projectSlug}-deploy-${config.deploymentNumber}`;
+  let containerStarted = false;
 
   try {
+    console.log("STAGE:CLONING");
     console.log("================================");
     console.log("Starting deployment");
     console.log("================================");
@@ -37,17 +45,21 @@ export async function deploy(
       config.branch ?? "main"
     );
 
+    console.log("STAGE:BUILDING");
     await buildDockerImage(
       deploymentDirectory,
       imageName
     );
 
+    console.log("STAGE:DEPLOYING");
     await runDockerContainer(
       imageName,
       containerName,
       config.port
     );
 
+    containerStarted = true;
+    console.log("STAGE:HEALTH_CHECK");
     const healthy = await checkHealth(
       `http://localhost:${config.port}/health`
     );
@@ -59,6 +71,13 @@ export async function deploy(
     console.log("================================");
     console.log("DEPLOYMENT SUCCESSFUL");
     console.log("================================");
+  } catch (error) {
+    if (containerStarted) {
+      await removeContainer(containerName).catch((cleanupError) => {
+        console.error("Failed deployment container cleanup:", cleanupError);
+      });
+    }
+    throw error;
   } finally {
     await fs.rm(deploymentDirectory, {
       recursive: true,

@@ -7,7 +7,9 @@ export async function checkHealth(
     try {
       console.log(`Health check ${attempt}/${retries}`);
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(3000)
+      });
 
       if (response.ok) {
         console.log("Health check passed.");
