@@ -1,7 +1,21 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { execFile } from "node:child_process";
 
-const execAsync = promisify(exec);
+function runDocker(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "docker",
+      args,
+      { windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(stdout.trim());
+      }
+    );
+  });
+}
 
 export async function buildDockerImage(
   projectPath: string,
@@ -9,17 +23,8 @@ export async function buildDockerImage(
 ): Promise<void> {
   console.log(`Building Docker image: ${imageName}`);
 
-  const command = `docker build -t ${imageName} "${projectPath}"`;
-
-  const { stdout, stderr } = await execAsync(command);
-
-  if (stdout) {
-    console.log(stdout);
-  }
-
-  if (stderr) {
-    console.log(stderr);
-  }
+  const output = await runDocker(["build", "-t", imageName, projectPath]);
+  if (output) console.log(output);
 
   console.log("Docker image built successfully.");
 }
@@ -31,33 +36,26 @@ export async function runDockerContainer(
 ): Promise<void> {
   console.log(`Starting container: ${containerName}`);
 
-  await stopAndRemoveContainer(containerName);
-
-  const command = [
-    "docker run",
+  const containerId = await runDocker([
+    "run",
     "-d",
-    `--name ${containerName}`,
-    `-p ${port}:3000`,
+    "--name",
+    containerName,
+    "-p",
+    `${port}:3000`,
     imageName
-  ].join(" ");
-
-  const { stdout } = await execAsync(command);
-
-  console.log(`Container started: ${stdout.trim()}`);
+  ]);
+  console.log(`Container started: ${containerId}`);
 }
 
-async function stopAndRemoveContainer(
-  containerName: string
-): Promise<void> {
-  try {
-    await execAsync(`docker stop ${containerName}`);
-  } catch {
-    // Container may not exist.
-  }
+export async function stopContainer(containerName: string): Promise<void> {
+  await runDocker(["stop", containerName]);
+}
 
-  try {
-    await execAsync(`docker rm ${containerName}`);
-  } catch {
-    // Container may not exist.
-  }
+export async function startContainer(containerName: string): Promise<void> {
+  await runDocker(["start", containerName]);
+}
+
+export async function removeContainer(containerName: string): Promise<void> {
+  await runDocker(["rm", "-f", containerName]);
 }

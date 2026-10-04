@@ -1,3 +1,44 @@
-DeployForge API
-PostgreSQL
-Redis
+services:
+  api:
+    image: node:20-alpine
+    container_name: deployforge-api
+    working_dir: /app
+    command: sh -lc "npm install && npm run dev"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: deployforge
+      DB_PASSWORD: deployforge
+      DB_NAME: deployforge
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16
+    container_name: deployforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deployforge
+      POSTGRES_PASSWORD: deployforge
+      POSTGRES_DB: deployforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - deployforge-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: deployforge-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  deployforge-postgres-data:
